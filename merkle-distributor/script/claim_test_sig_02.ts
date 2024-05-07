@@ -101,8 +101,8 @@ async function createSignature(eth_signer: ethers.Wallet, solanaPublicKey: Uint8
 
   let payer01: Keypair = newPayer;
   // let publickey = payer01.publicKey.toBytes();
-  // let oneUserPda = new PublicKey("Hoe8pY5HbKd837pVApzLnf5DFw7GDFezTzUHU28Jh68s");
-  // payer_ata = oneUserPda;
+  let oneUserPda = new PublicKey("Hoe8pY5HbKd837pVApzLnf5DFw7GDFezTzUHU28Jh68s");
+  payer_ata = oneUserPda;
   let publickey = payer_ata.toBytes();
   console.log("publickey Array is", Array.from(publickey));
 
@@ -261,9 +261,9 @@ async function createSignature(eth_signer: ethers.Wallet, solanaPublicKey: Uint8
   console.log("== signature is ==", signature);
   console.log("== recoveryId is ==", recoveryId);
 
-  // // let tx = await program.methods.claim(
-  // // let tx = await program.methods.claimTestNode(
-  // // let tx = await program.methods.claimTestMerkle(
+  // let tx = await program.methods.claim(
+  // let tx = await program.methods.claimTestNode(
+  // let tx = await program.methods.claimTestMerkle(
   let tx = await program.methods.claimTestEvmSign(
     Array.from(ethers.utils.arrayify('0x' + eth_address)),//evm
     index,

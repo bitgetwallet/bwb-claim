@@ -6,7 +6,8 @@ use crate::error::ErrorCode;
 
 pub mod error;
 
-declare_id!("HfWDaBxjLdxQxmzG8gBWZWC66upnjXhrzwuCSKoYvmmX");
+//declare_id!("HfWDaBxjLdxQxmzG8gBWZWC66upnjXhrzwuCSKoYvmmX");
+declare_id!("Gmvi8YDqRzuJD7zvQdpBC8b2zmu9J4bui5joyqzzKV9A");
 
 /// The [merkle_distributor] program.
 #[program]
@@ -89,6 +90,7 @@ pub mod cosigner_distributor {
             .checked_add(amount)
             .ok_or(ErrorCode::ArithmeticError)?;
 
+        msg!("evm_claimer is {:?}", evm_claimer.as_ref());
         msg!("claim_to_ata is {:?}", ctx.accounts.to_token_account.key());
         msg!("claim_amount is {:?}", amount);
         
@@ -166,19 +168,18 @@ pub mod cosigner_distributor {
 /// Accounts for [merkle_distributor::new_distributor].
 #[derive(Accounts)]
 pub struct NewDistributor<'info> {
-    /// cosigner key of the distributor.
-    // pub cosigner: Signer<'info>,
+    
     /// Admin key of the distributor and payer.
     #[account(mut)]
-    pub admin_auth: Signer<'info>,
+    pub payer: Signer<'info>,
 
     /// [MerkleDistributor].
-    #[account(//need check diff base 能不能生成new distributor
+    #[account(
         init,
         space = 8 + MerkleDistributor::LEN,
         seeds = [b"MerkleDistributor".as_ref()],
         bump,
-        payer = admin_auth
+        payer = payer
     )]
     pub distributor: Account<'info, MerkleDistributor>,
 
@@ -188,7 +189,7 @@ pub struct NewDistributor<'info> {
         seeds=[b"token_vault"],
         token::mint = mint,
         token::authority=distributor,
-        payer = admin_auth,
+        payer = payer,
         bump
     )]
     pub token_vault: Account<'info, TokenAccount>,
@@ -235,20 +236,22 @@ pub struct Claim<'info> {
     /// Token vault
     #[account(
         mut,
-        token::mint = mint,// BWB token 地址
+        seeds=[b"token_vault"],
+        bump,
+        token::mint = mint,
         token::authority=distributor
     )]
     pub from_token_vault: Account<'info, TokenAccount>,// BWB token account, owner is distributor
 
     /// Account to send the claimed tokens to.
     #[account(mut)]
-    pub to_token_account: Account<'info, TokenAccount>,// receipent token account PDA,可以代领
+    pub to_token_account: Account<'info, TokenAccount>,
 
     /// Payer of the claim.
     #[account(mut)]
-    pub payer: Signer<'info>,// == payer==sender // receipent = EOA
+    pub payer: Signer<'info>,// == payer==sender
 
-    #[account(address = distributor.cosigner)]// base == cosigner
+    #[account(address = distributor.cosigner)]
     cosigner: Signer<'info>,
 
     /// The [System] program.
@@ -298,9 +301,8 @@ pub struct ClaimStatus {// evm =>ClaimStatus PDA
     /// When the tokens were claimed.
     pub claimed_at: i64,
     /// Amount of tokens claimed.
-    pub claimed_amount: u64,
-    /// claimed flag
-    pub is_claimed: bool,
+    pub claimed_amount: u64
+
 }
 
 impl ClaimStatus {
@@ -345,6 +347,7 @@ pub struct WithdrawBWBToken<'info> {
 
     #[account(address = distributor.operator)]
     pub operator: Signer<'info>,
+
     #[account(mut,token::mint=distributor.mint)]
     pub from_token_account: Account<'info, TokenAccount>,
     #[account(
@@ -374,12 +377,12 @@ pub struct WithdrawOtherToken<'info> {
     pub from_token_account: Account<'info, TokenAccount>,
     #[account(
         mut,
-        token::mint=distributor.mint,
+        token::mint=mint,
         token::authority=distributor.receiver
     )]
     pub to_token_account: Account<'info, TokenAccount>,
     #[account(address = from_token_account.owner)]
-    pub from_ata_owner: Signer<'info>,// this program Id
+    pub from_ata_owner: Signer<'info>,// this Program Id
     /// SPL [Token] program.
     pub token_program: Program<'info, Token>,
 }
