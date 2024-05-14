@@ -27,10 +27,6 @@ pub mod merkle_proof;
 pub mod utils;
 pub mod error;
 
-// pub mod multi_merkle_tree;
-// pub use multi_merkle_tree::*;
-
-
 declare_id!("zoat5xwp6Cg35z7SVmMCagw64PHrfAoGDCE7QBzvtiH");
 
 /// The [multi_merkle_distributor] program.
@@ -44,6 +40,7 @@ pub mod multi_merkle_distributor {
     #[allow(clippy::result_large_err)]
     pub fn new_distributor(
         ctx: Context<NewDistributor>,
+        //roots: [MerkleRoot; 80],
         max_total_claim: u64,
         max_num_nodes: u64,
         start_timestamp: i64,
@@ -61,7 +58,6 @@ pub mod multi_merkle_distributor {
         
         distributor.bump = ctx.bumps.distributor;
         distributor.mint = ctx.accounts.mint.key();
-
 
         distributor.max_total_claim = max_total_claim;
         distributor.max_num_nodes = max_num_nodes;
@@ -126,17 +122,11 @@ pub mod multi_merkle_distributor {
 
         let to_ata = ctx.accounts.to_token_account.key();
         let to_ata_bytes = to_ata.to_bytes();
-        // create msg "Authorize BWB claim:${receivAddress}\n\n"
-        let prefix_msg = b"Authorize BWB claim:";
-        let middle_msg = b"\n\n";
         // equal Solidity Keccak256 hash
         let keccak256_hash = anchor_lang::solana_program::keccak::hashv(&[&to_ata_bytes,&amount.to_le_bytes()]);
         // Construct actual_message
         let mut actual_message: Vec<u8> = Vec::new();
-        actual_message.extend_from_slice(b"\x19Ethereum Signed Message:\n98");
-        actual_message.extend_from_slice(prefix_msg);
-        actual_message.extend_from_slice(&ctx.accounts.to_token_account.owner.key().to_string().into_bytes());
-        actual_message.extend_from_slice(middle_msg);
+        actual_message.extend_from_slice(b"\x19Ethereum Signed Message:\n32");
         actual_message.extend_from_slice(&keccak256_hash.as_ref());
 
         // check token to_ata is evm_calimer points
@@ -207,133 +197,6 @@ pub mod multi_merkle_distributor {
         Ok(())
     }
 
-    #[allow(clippy::result_large_err)]
-    pub fn claim_test_evm_sign(
-        ctx: Context<Claim>,
-        evm_claimer:[u8;20],
-        account_index: u64,
-        roots_index:u64,
-
-        index: u64,
-        amount: u64,
-        proof: Vec<[u8; 32]>,
-
-        msg: Vec<u8>, sig: [u8; 64], recovery_id: u8
-    ) -> Result<()> {
-        let account = &ctx.accounts.distributor;
-        require!(!account.is_paused, ErrorCode::ProtocolPaused);
-        let clock = Clock::get()?;
-        require!(clock.unix_timestamp >= account.claim_start_at , ErrorCode::TooEarlyToClaim);
-
-        let claim_status = &mut ctx.accounts.claim_status;// user => claim_status PDA
-        require!(claim_status.claimed_amount == 0, ErrorCode::AlreadyClaimed);
-
-        let distributor = &ctx.accounts.distributor;// init status and vault'owner
-
-        require!(
-            ctx.accounts.payer.key() != distributor.admin_auth,
-            ErrorCode::Unauthorized
-        );
-
-        // Verify the EVM Sign.
-        // Get what should be the Secp256k1Program instruction
-        let ix: Instruction = load_instruction_at_checked(0, &ctx.accounts.ix_sysvar)?;
-
-
-        let to_ata = ctx.accounts.to_token_account.key();
-        let to_ata_bytes = to_ata.to_bytes();
-        
-        // create msg "Authorize BWB claim:${receivAddress}\n\n"
-        let prefix_msg = b"Authorize BWB claim:";
-        let middle_msg = b"\n\n";
-        // equal Solidity Keccak256 hash
-        let keccak256_hash = anchor_lang::solana_program::keccak::hashv(&[&to_ata_bytes,&amount.to_le_bytes()]);
-        msg!("keccak256_hash  is {:?}", keccak256_hash.to_bytes());
-        // Construct actual_message
-        let mut actual_message: Vec<u8> = Vec::new();
-        actual_message.extend_from_slice(b"\x19Ethereum Signed Message:\n98");
-        msg!("actual_message.len() is {:?}", actual_message.len());
-        actual_message.extend_from_slice(prefix_msg);
-        actual_message.extend_from_slice(&ctx.accounts.to_token_account.owner.key().to_string().into_bytes());
-        actual_message.extend_from_slice(middle_msg);
-        actual_message.extend_from_slice(&keccak256_hash.as_ref());
-        msg!("actual_message.len() is {:?}", actual_message.len());
-
-        msg!("input msg is {:?}", &msg);
-        msg!("actual_message  is {:?}", actual_message);
-
-        // check token to_ata is evm_calimer points
-        require!(actual_message == msg, ErrorCode::InvaildReceipentATA);
-
-        // Check that ix is what we expect to have been sent
-        utils::verify_secp256k1_ix(&ix, &evm_claimer, &msg, &sig, recovery_id)?;
-
-        // Verify the merkle proof.
-        let node = anchor_lang::solana_program::keccak::hashv(&[
-            &index.to_le_bytes(),
-            &evm_claimer,
-            &amount.to_le_bytes(),
-        ]);
-        msg!("node hash is {:?}", node);
-
-        let roots_account = &ctx.accounts.merkle_roots;
-
-        require!(
-            merkle_proof::verify(proof, roots_account.roots[roots_index as usize].root, node.0),
-            ErrorCode::InvalidProof
-        );
-
-        // // Mark it claimed and send the tokens.
-        // claim_status.claimed_amount = amount;
-    
-        // claim_status.claimed_at = clock.unix_timestamp;
-        // claim_status.claimant = ctx.accounts.to_token_account.key();
-
-        // let seeds = [
-        //     b"MerkleDistributor".as_ref(),
-        //     &[ctx.accounts.distributor.bump],
-        // ];
-
-        // token::transfer(
-        //     CpiContext::new(
-        //         ctx.accounts.token_program.to_account_info(),
-        //         token::Transfer {
-        //             from: ctx.accounts.from_token_vault.to_account_info(),
-        //             to: ctx.accounts.to_token_account.to_account_info(),
-        //             authority: ctx.accounts.distributor.to_account_info(),
-        //         },
-        //     )
-        //     .with_signer(&[&seeds[..]]),
-        //     amount,
-        // )?;
-
-        // let distributor = &mut ctx.accounts.distributor;
-        // distributor.total_amount_claimed = distributor
-        //     .total_amount_claimed
-        //     .checked_add(amount)
-        //     .ok_or(ErrorCode::ArithmeticError)?;
-        // require!(
-        //     distributor.total_amount_claimed <= distributor.max_total_claim,
-        //     ErrorCode::ExceededMaxClaim
-        // );
-        // distributor.num_nodes_claimed = distributor
-        //     .num_nodes_claimed.
-        //     checked_add(1)
-        //     .ok_or(ErrorCode::ArithmeticError)?;
-
-        // require!(
-        //     distributor.num_nodes_claimed <= distributor.max_num_nodes,
-        //     ErrorCode::ExceededMaxNumNodes
-        // );
-
-        // msg!("index is {:?}", index);
-        // msg!("evm_claimer is {:?}", evm_claimer.as_ref());
-        // msg!("claim_to_ata is {:?}", ctx.accounts.to_token_account.key());
-        // msg!("claim_amount is {:?}", amount);
-        
-        Ok(())
-    }
-
     pub fn update_receiver(ctx: Context<UpdateAdminRole>, new_receiver: Pubkey) -> Result<()> {
         let distributor = &mut ctx.accounts.distributor;
         distributor.receiver = new_receiver;
@@ -400,8 +263,6 @@ pub mod multi_merkle_distributor {
 
         Ok(())
     }
-
-
     
 }
 
