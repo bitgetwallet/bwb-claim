@@ -14,7 +14,7 @@ export class BalanceTree {
       balances.map(({ account, amount }, index) => {
 
         let bufferNode = BalanceTree.toNode(index, account, amount);
-        console.log("====== account is", account);
+        // console.log("====== account is", account);
         // console.log("Node hash is", Array.from(bufferNode));
         // console.log("Node hash is", Array.from(bufferNode).map(num => num.toString(16)).join(''));
         // console.log("bs58 Node hash is", bs58.encode(bufferNode));

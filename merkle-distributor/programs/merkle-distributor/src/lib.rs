@@ -27,12 +27,15 @@ pub mod merkle_proof;
 pub mod utils;
 pub mod error;
 
-// declare_id!("Cu6ZSaUGDaHt8qwzZBxNh762cjn7n9JK5T9g8qrGFE57");
-declare_id!("9NVfZpQj1K6xDh2mCBc7PNhAvqyBEvnca9EW1onLukcU");
+// pub mod multi_merkle_tree;
+// pub use multi_merkle_tree::*;
 
-/// The [merkle_distributor] program.
+
+declare_id!("zoat5xwp6Cg35z7SVmMCagw64PHrfAoGDCE7QBzvtiH");
+
+/// The [multi_merkle_distributor] program.
 #[program]
-pub mod merkle_distributor {
+pub mod multi_merkle_distributor {
 
     use super::*;
 
@@ -41,7 +44,6 @@ pub mod merkle_distributor {
     #[allow(clippy::result_large_err)]
     pub fn new_distributor(
         ctx: Context<NewDistributor>,
-        root: [u8; 32],
         max_total_claim: u64,
         max_num_nodes: u64,
         start_timestamp: i64,
@@ -58,25 +60,42 @@ pub mod merkle_distributor {
         distributor.operator = operator;
         
         distributor.bump = ctx.bumps.distributor;
-
-        distributor.root = root;
         distributor.mint = ctx.accounts.mint.key();
+
 
         distributor.max_total_claim = max_total_claim;
         distributor.max_num_nodes = max_num_nodes;
         distributor.total_amount_claimed = 0;
         distributor.num_nodes_claimed = 0;
-
         distributor.claim_start_at = start_timestamp;
 
         Ok(())
     }
+
+    #[allow(clippy::result_large_err)]
+    pub fn init_merkle_roots(
+        ctx: Context<InitMerkleRoots>,
+        account_index:u64,
+        roots: [MerkleRoot; 20]
+    ) -> Result<()> {
+        let merkle_roots_account = &mut ctx.accounts.merkle_roots;
+        merkle_roots_account.roots = roots;
+
+        let distributor = &mut ctx.accounts.distributor;
+        distributor.roots_accounts[account_index as usize] = merkle_roots_account.key();
+
+        Ok(())
+    }
+
 
     /// Claims tokens from the [MerkleDistributor].
     #[allow(clippy::result_large_err)]
     pub fn claim(
         ctx: Context<Claim>,
         evm_claimer:[u8;20],
+        account_index: u64,
+        roots_index: u64,
+
         index: u64,
         amount: u64,
         proof: Vec<[u8; 32]>,
@@ -107,20 +126,22 @@ pub mod merkle_distributor {
 
         let to_ata = ctx.accounts.to_token_account.key();
         let to_ata_bytes = to_ata.to_bytes();
-        
-        let prefix_msg = b"Please sign this message: ";
+        // create msg "Authorize BWB claim:${receivAddress}\n\n"
+        let prefix_msg = b"Authorize BWB claim:";
+        let middle_msg = b"\n\n";
         // equal Solidity Keccak256 hash
-        let keccak256_hash = anchor_lang::solana_program::keccak::hashv(&[prefix_msg, &to_ata_bytes,&amount.to_le_bytes()]);
-        msg!("keccak256_hash  is {:?}", keccak256_hash.to_bytes());
+        let keccak256_hash = anchor_lang::solana_program::keccak::hashv(&[&to_ata_bytes,&amount.to_le_bytes()]);
         // Construct actual_message
         let mut actual_message: Vec<u8> = Vec::new();
-        actual_message.extend_from_slice(b"\x19Ethereum Signed Message:\n32");
+        actual_message.extend_from_slice(b"\x19Ethereum Signed Message:\n98");
+        actual_message.extend_from_slice(prefix_msg);
+        actual_message.extend_from_slice(&ctx.accounts.to_token_account.owner.key().to_string().into_bytes());
+        actual_message.extend_from_slice(middle_msg);
         actual_message.extend_from_slice(&keccak256_hash.as_ref());
 
-        msg!("actual_message  is {:?}", actual_message);
-
         // check token to_ata is evm_calimer points
-        require!(actual_message == msg, ErrorCode::InvaildReceipentATA);
+        require!(actual_message == msg, ErrorCode::InvaildReceipentATA);       
+
 
         // Verify the merkle proof.
         let node = anchor_lang::solana_program::keccak::hashv(&[
@@ -130,8 +151,10 @@ pub mod merkle_distributor {
         ]);
         msg!("node hash is {:?}", node);
 
+        let roots_account = &ctx.accounts.merkle_roots;
+
         require!(
-            merkle_proof::verify(proof, distributor.root, node.0),
+            merkle_proof::verify(proof, roots_account.roots[roots_index as usize].root, node.0),
             ErrorCode::InvalidProof
         );
 
@@ -160,17 +183,15 @@ pub mod merkle_distributor {
         )?;
 
         let distributor = &mut ctx.accounts.distributor;
-        distributor.total_amount_claimed = distributor
-            .total_amount_claimed
+        distributor.total_amount_claimed = distributor.total_amount_claimed
             .checked_add(amount)
             .ok_or(ErrorCode::ArithmeticError)?;
         require!(
             distributor.total_amount_claimed <= distributor.max_total_claim,
             ErrorCode::ExceededMaxClaim
         );
-        distributor.num_nodes_claimed = distributor
-            .num_nodes_claimed.
-            checked_add(1)
+        distributor.num_nodes_claimed = distributor.num_nodes_claimed
+            .checked_add(1)
             .ok_or(ErrorCode::ArithmeticError)?;
 
         require!(
@@ -182,6 +203,133 @@ pub mod merkle_distributor {
         msg!("evm_claimer is {:?}", evm_claimer.as_ref());
         msg!("claim_to_ata is {:?}", ctx.accounts.to_token_account.key());
         msg!("claim_amount is {:?}", amount);
+        
+        Ok(())
+    }
+
+    #[allow(clippy::result_large_err)]
+    pub fn claim_test_evm_sign(
+        ctx: Context<Claim>,
+        evm_claimer:[u8;20],
+        account_index: u64,
+        roots_index:u64,
+
+        index: u64,
+        amount: u64,
+        proof: Vec<[u8; 32]>,
+
+        msg: Vec<u8>, sig: [u8; 64], recovery_id: u8
+    ) -> Result<()> {
+        let account = &ctx.accounts.distributor;
+        require!(!account.is_paused, ErrorCode::ProtocolPaused);
+        let clock = Clock::get()?;
+        require!(clock.unix_timestamp >= account.claim_start_at , ErrorCode::TooEarlyToClaim);
+
+        let claim_status = &mut ctx.accounts.claim_status;// user => claim_status PDA
+        require!(claim_status.claimed_amount == 0, ErrorCode::AlreadyClaimed);
+
+        let distributor = &ctx.accounts.distributor;// init status and vault'owner
+
+        require!(
+            ctx.accounts.payer.key() != distributor.admin_auth,
+            ErrorCode::Unauthorized
+        );
+
+        // Verify the EVM Sign.
+        // Get what should be the Secp256k1Program instruction
+        let ix: Instruction = load_instruction_at_checked(0, &ctx.accounts.ix_sysvar)?;
+
+
+        let to_ata = ctx.accounts.to_token_account.key();
+        let to_ata_bytes = to_ata.to_bytes();
+        
+        // create msg "Authorize BWB claim:${receivAddress}\n\n"
+        let prefix_msg = b"Authorize BWB claim:";
+        let middle_msg = b"\n\n";
+        // equal Solidity Keccak256 hash
+        let keccak256_hash = anchor_lang::solana_program::keccak::hashv(&[&to_ata_bytes,&amount.to_le_bytes()]);
+        msg!("keccak256_hash  is {:?}", keccak256_hash.to_bytes());
+        // Construct actual_message
+        let mut actual_message: Vec<u8> = Vec::new();
+        actual_message.extend_from_slice(b"\x19Ethereum Signed Message:\n98");
+        msg!("actual_message.len() is {:?}", actual_message.len());
+        actual_message.extend_from_slice(prefix_msg);
+        actual_message.extend_from_slice(&ctx.accounts.to_token_account.owner.key().to_string().into_bytes());
+        actual_message.extend_from_slice(middle_msg);
+        actual_message.extend_from_slice(&keccak256_hash.as_ref());
+        msg!("actual_message.len() is {:?}", actual_message.len());
+
+        msg!("input msg is {:?}", &msg);
+        msg!("actual_message  is {:?}", actual_message);
+
+        // check token to_ata is evm_calimer points
+        require!(actual_message == msg, ErrorCode::InvaildReceipentATA);
+
+        // Check that ix is what we expect to have been sent
+        utils::verify_secp256k1_ix(&ix, &evm_claimer, &msg, &sig, recovery_id)?;
+
+        // Verify the merkle proof.
+        let node = anchor_lang::solana_program::keccak::hashv(&[
+            &index.to_le_bytes(),
+            &evm_claimer,
+            &amount.to_le_bytes(),
+        ]);
+        msg!("node hash is {:?}", node);
+
+        let roots_account = &ctx.accounts.merkle_roots;
+
+        require!(
+            merkle_proof::verify(proof, roots_account.roots[roots_index as usize].root, node.0),
+            ErrorCode::InvalidProof
+        );
+
+        // // Mark it claimed and send the tokens.
+        // claim_status.claimed_amount = amount;
+    
+        // claim_status.claimed_at = clock.unix_timestamp;
+        // claim_status.claimant = ctx.accounts.to_token_account.key();
+
+        // let seeds = [
+        //     b"MerkleDistributor".as_ref(),
+        //     &[ctx.accounts.distributor.bump],
+        // ];
+
+        // token::transfer(
+        //     CpiContext::new(
+        //         ctx.accounts.token_program.to_account_info(),
+        //         token::Transfer {
+        //             from: ctx.accounts.from_token_vault.to_account_info(),
+        //             to: ctx.accounts.to_token_account.to_account_info(),
+        //             authority: ctx.accounts.distributor.to_account_info(),
+        //         },
+        //     )
+        //     .with_signer(&[&seeds[..]]),
+        //     amount,
+        // )?;
+
+        // let distributor = &mut ctx.accounts.distributor;
+        // distributor.total_amount_claimed = distributor
+        //     .total_amount_claimed
+        //     .checked_add(amount)
+        //     .ok_or(ErrorCode::ArithmeticError)?;
+        // require!(
+        //     distributor.total_amount_claimed <= distributor.max_total_claim,
+        //     ErrorCode::ExceededMaxClaim
+        // );
+        // distributor.num_nodes_claimed = distributor
+        //     .num_nodes_claimed.
+        //     checked_add(1)
+        //     .ok_or(ErrorCode::ArithmeticError)?;
+
+        // require!(
+        //     distributor.num_nodes_claimed <= distributor.max_num_nodes,
+        //     ErrorCode::ExceededMaxNumNodes
+        // );
+
+        // msg!("index is {:?}", index);
+        // msg!("evm_claimer is {:?}", evm_claimer.as_ref());
+        // msg!("claim_to_ata is {:?}", ctx.accounts.to_token_account.key());
+        // msg!("claim_amount is {:?}", amount);
         
         Ok(())
     }
@@ -252,6 +400,9 @@ pub mod merkle_distributor {
 
         Ok(())
     }
+
+
+    
 }
 
 
@@ -262,7 +413,7 @@ pub struct NewDistributor<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
 
-    /// [MerkleDistributor].
+    /// [MerkleDistributor] 
     #[account(
         init,
         space = 8 + MerkleDistributor::LEN,
@@ -292,9 +443,35 @@ pub struct NewDistributor<'info> {
     pub token_program: Program<'info, Token>,
 }
 
+#[derive(Accounts)]
+#[instruction(account_index:u64)]
+pub struct InitMerkleRoots<'info> {// create MerkleRoots pda
+    /// Admin key of the distributor and payer.
+    #[account(mut, address = distributor.operator)]
+    pub operator: Signer<'info>,
+
+    #[account(
+        mut,
+        seeds = [b"MerkleDistributor".as_ref()],
+        bump,
+    )]
+    pub distributor: Account<'info, MerkleDistributor>,
+
+    #[account(
+        init,
+        space = 8 + MerkleRoots20::LEN,
+        seeds = [b"merkle_roots".as_ref(), account_index.to_le_bytes().as_ref()],
+        bump,
+        payer = operator
+    )]
+    pub merkle_roots: Account<'info, MerkleRoots20>,
+    /// The [System] program.
+    pub system_program: Program<'info, System>,
+}
+
 /// [merkle_distributor::claim] accounts.
 #[derive(Accounts)]
-#[instruction(evm_claimer: [u8; 20])]
+#[instruction(evm_claimer: [u8; 20], account_index:u64)]
 pub struct Claim<'info> {
     /// The [MerkleDistributor].
     #[account(
@@ -336,6 +513,13 @@ pub struct Claim<'info> {
     #[account(mut)]
     pub to_token_account: Account<'info, TokenAccount>,// receipent token account PDA
 
+    #[account(
+        address = distributor.roots_accounts[account_index as usize],
+        seeds = [b"merkle_roots".as_ref(), account_index.to_le_bytes().as_ref()],
+        bump,
+    )]
+    pub merkle_roots: Box<Account<'info, MerkleRoots20>>,
+
     /// Payer of the claim.
     #[account(mut)]
     pub payer: Signer<'info>,// sender
@@ -373,7 +557,6 @@ pub struct UpdateAdminRole<'info> {
 
 /// State for the account which distributes tokens.
 #[account]
-#[derive(Default)]
 pub struct MerkleDistributor {
     /// manage cosigner, operator, receiver
     pub admin_auth: Pubkey,
@@ -383,14 +566,12 @@ pub struct MerkleDistributor {
     pub cosigner: Pubkey, // base
     /// operator key used to set paused and withdraw token.
     pub operator: Pubkey,//admin_auth
-    /// Bump seed.
-    pub bump: u8,
-
-    /// The 256-bit merkle root.
-    pub root: [u8; 32],
-
     /// [Mint] of the token to be distributed.
     pub mint: Pubkey,
+    /// Bump seed.
+    pub bump: u8,
+    /// 4 roots_account Pda
+    pub roots_accounts: [Pubkey; 4],
     /// Maximum number of tokens that can ever be claimed from this [MerkleDistributor].
     pub max_total_claim: u64,
     /// Maximum number of nodes that can ever be claimed from this [MerkleDistributor].
@@ -407,7 +588,28 @@ pub struct MerkleDistributor {
 }
 
 impl MerkleDistributor {
-    pub const LEN: usize = 32 + 32 + 32 + 32 + 1 + 32 + 32 + 8 + 8 + 8 + 8 + 8 + 1;
+    pub const LEN: usize = 32 * 5 + 1 + 32*4 + 8*5 + 1;
+}
+
+#[account]
+pub struct MerkleRoots20 {
+    /// root array,len is 20
+    pub roots: [MerkleRoot; 20],
+}
+
+impl MerkleRoots20 {
+    pub const LEN: usize = 32*20;
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+pub struct MerkleRoot {
+    
+    /// The 256-bit merkle root.
+    pub root: [u8; 32],
+}
+
+impl MerkleRoot {
+    pub const LEN: usize = 32;
 }
 
 /// Holds whether or not a claimant has claimed tokens.
@@ -423,7 +625,7 @@ pub struct ClaimStatus {// evm =>ClaimStatus PDA
 }
 
 impl ClaimStatus {
-    pub const LEN: usize = 32 + 8 + 8;
+    pub const LEN: usize = 32 + 8 + 8 ;
 }
 
 #[derive(Accounts)]
@@ -489,3 +691,12 @@ pub struct WithdrawOtherToken<'info> {
     pub token_program: Program<'info, Token>,
 }
 
+/// Accounts for [merkle_distributor::update_distributor].
+#[derive(Accounts)]
+pub struct UpdateDistributor<'info> {
+    /// Admin key of the distributor.
+    pub admin_auth: Signer<'info>,
+
+    #[account(mut, has_one = admin_auth @ ErrorCode::DistributorAdminMismatch)]
+    pub distributor: Account<'info, MerkleDistributor>,
+}

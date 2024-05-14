@@ -2,7 +2,7 @@
     "scripts": {
         "lint:fix": "prettier */*.js \"*/**/*{.js,.ts}\" -w",
         "lint": "prettier */*.js \"*/**/*{.js,.ts}\" --check",
-        "debug": "npx ts-node script/claim_test_sig.ts"
+        "debug": "npx ts-node script/claim_test_sig_02.ts"
     },
     "dependencies": {
         "@coral-xyz/anchor": "^0.29.0"
@@ -15,6 +15,7 @@
         "@types/bn.js": "^5.1.0",
         "@types/chai": "^4.3.0",
         "@types/mocha": "^9.0.0",
+        "@types/node": "^20.12.11",
         "bs58": "^5.0.0",
         "chai": "^4.3.4",
         "dotenv": "^16.4.5",
