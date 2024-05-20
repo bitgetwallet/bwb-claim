@@ -35,23 +35,39 @@ import {TOKEN_PROGRAM_ID} from "@solana/spl-token";
   console.log("operator is : " + operator.publicKey.toBase58());
   console.log("programIdSelf is : " + programIdSelf.publicKey.toBase58());
 
-  let token_mint = new PublicKey("83QLg6QKjfFCgoFWTx8x2EAytbAwVgA5G1mtAcsnybtp");//devnet
-  //let token_mint = new PublicKey("G1GV35DHibxUDJtMC9DBRzruqhLhEe6tr85WQ73XoPJ3");//mainnet TT02
-  let payer_ata = new PublicKey("AR1aJmL5jWmV53bQXSQaHNvB6uqmbC9yH1yVqhRnHvvi");
-  // let receiver_ata = new PublicKey('Bx66barTesm9yjcvRd8QSedgpxphBY8EfgbvgXUthDGe');
-  let receiver_ata = new PublicKey('ERo43ghcrhgz6nUGayP5N97XQCYVR8B8y3RNVwVsgE4F');
+  // //devnet
+  // // let token_mint = new PublicKey("83QLg6QKjfFCgoFWTx8x2EAytbAwVgA5G1mtAcsnybtp");
+  // let payer_ata = new PublicKey("AR1aJmL5jWmV53bQXSQaHNvB6uqmbC9yH1yVqhRnHvvi");
+  // // devnet
+  // // let receiver_ata = new PublicKey('Bx66barTesm9yjcvRd8QSedgpxphBY8EfgbvgXUthDGe');
+  // let receiver_ata = new PublicKey('ERo43ghcrhgz6nUGayP5N97XQCYVR8B8y3RNVwVsgE4F');
+  
+  // // payer_ata = receiver_ata;
+
+  // process.env.ANCHOR_WALLET = process.env.HOME + '/.config/solana/id.json';
+  // process.env.ANCHOR_PROVIDER_URL = 'https://api.devnet.solana.com';
+  // // Configure the client to use the local cluster.
+  // anchor.setProvider(anchor.AnchorProvider.env());
+
+  // const connection = new Connection(clusterApiUrl('devnet'), 'confirmed');
+
+
+  // mainnet
+  let token_mint = new PublicKey("G1GV35DHibxUDJtMC9DBRzruqhLhEe6tr85WQ73XoPJ3");//mainnet TT02
+  let payer_ata = new PublicKey("7hrkCMt3rGgk1S72RW5MkXtSbn6bZ8XtgkXodjfYjf8U");
+
+  //let receiver_ata = new PublicKey('ERo43ghcrhgz6nUGayP5N97XQCYVR8B8y3RNVwVsgE4F');
   
   // payer_ata = receiver_ata;
 
   process.env.ANCHOR_WALLET = process.env.HOME + '/.config/solana/id.json';
   // process.env.ANCHOR_PROVIDER_URL = 'https://special-compatible-meadow.solana-mainnet.quiknode.pro/09ca4f4810f96f06bc274c89314e46f0f433e93e';
-  // process.env.ANCHOR_PROVIDER_URL = 'https://api.mainnet-beta.solana.com';
-  process.env.ANCHOR_PROVIDER_URL = 'https://api.devnet.solana.com';
+  process.env.ANCHOR_PROVIDER_URL = 'https://api.mainnet-beta.solana.com';
   // Configure the client to use the local cluster.
   anchor.setProvider(anchor.AnchorProvider.env());
 
-  const connection = new Connection(clusterApiUrl('devnet'), 'confirmed');
-  // const connection = new Connection(clusterApiUrl('mainnet-beta'), 'confirmed');
+  const connection = new Connection(clusterApiUrl('mainnet-beta'), 'confirmed');
+
 
   const program = anchor.workspace.CosignerDistributor as Program<CosignerDistributor>;
   console.log("===program is: ", program.programId);
@@ -87,21 +103,21 @@ import {TOKEN_PROGRAM_ID} from "@solana/spl-token";
   let time_stamp = (now_time/1000).toFixed();
   console.log("now_time is",time_stamp);
 
-  // let tx = await program.methods.newDistributor(
-  //   new anchor.BN(time_stamp),
-  //   cosigner.publicKey, admin_auth.publicKey,receiver.publicKey,operator.publicKey
-  // ).accounts({
-    
-  //   adminAuth: admin_auth.publicKey,
-  //   distributor: distributorPda,
-  //   tokenVault:tokenVaultPda,
-  //   mint: token_mint,
-  //   systemProgram: SystemProgram.programId,
-  //   tokenProgram: TOKEN_PROGRAM_ID
-  // }).signers([admin_auth])
-  // .rpc();
+  return;
+  let tx = await program.methods.newDistributor(
+    new anchor.BN(time_stamp),
+    cosigner.publicKey, admin_auth.publicKey,receiver.publicKey,operator.publicKey
+  ).accounts({
+    payer: admin_auth.publicKey,
+    distributor: distributorPda,
+    tokenVault:tokenVaultPda,
+    mint: token_mint,
+    systemProgram: SystemProgram.programId,
+    tokenProgram: TOKEN_PROGRAM_ID
+  }).signers([admin_auth])
+  .rpc();
 
-  // console.log("Your transaction signature", tx);
+  console.log("Your transaction signature", tx);
 
   // let tx = await program.methods.updateDistributor(
   //   cosigner.publicKey
@@ -182,19 +198,19 @@ import {TOKEN_PROGRAM_ID} from "@solana/spl-token";
   
   // console.log("Your transaction signature", tx);
 
-  distributorData = await program.account.merkleDistributor.fetch(distributorPda);
-  console.log("distributorData receiver ", distributorData.receiver.toBase58());
+  // distributorData = await program.account.merkleDistributor.fetch(distributorPda);
+  // console.log("distributorData receiver ", distributorData.receiver.toBase58());
 
-  let newKp = Keypair.generate();
-  let tx = await program.methods.updateReceiver(receiver.publicKey).accounts({
-      adminAuth: admin_auth.publicKey,
-      distributor: distributorPda,
-    }).signers([admin_auth])
-    .rpc().catch(e => console.error(e));
+  // let newKp = Keypair.generate();
+  // let tx = await program.methods.updateReceiver(receiver.publicKey).accounts({
+  //     adminAuth: admin_auth.publicKey,
+  //     distributor: distributorPda,
+  //   }).signers([admin_auth])
+  //   .rpc().catch(e => console.error(e));
   
-  console.log("Your transaction signature", tx);
+  // console.log("Your transaction signature", tx);
 
-  distributorData = await program.account.merkleDistributor.fetch(distributorPda);
-  console.log("distributorData receiver is", distributorData.receiver.toBase58());
+  // distributorData = await program.account.merkleDistributor.fetch(distributorPda);
+  // console.log("distributorData receiver is", distributorData.receiver.toBase58());
   
 })();

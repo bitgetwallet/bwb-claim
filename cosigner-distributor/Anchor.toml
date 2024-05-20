@@ -4,18 +4,18 @@
 seeds = false
 skip-lint = false
 
+[programs.mainnet]
+cosigner_distributor = "3tLUSygUmiFMPhkaNwhQpX35JXeyYhxLbYDreViaXBSP"
 [programs.devnet]
-cosigner_distributor = "Gmvi8YDqRzuJD7zvQdpBC8b2zmu9J4bui5joyqzzKV9A"
-# [programs.mainnet]
-# cosigner_distributor = "HfWDaBxjLdxQxmzG8gBWZWC66upnjXhrzwuCSKoYvmmX"
+cosigner_distributor = "3tLUSygUmiFMPhkaNwhQpX35JXeyYhxLbYDreViaXBSP"
 
 [registry]
 url = "https://api.apr.dev"
 
 [provider]
-# cluster = "Localnet"
 # cluster = "mainnet"
 cluster = "devnet"
+
 wallet = "/Users/xp/.config/solana/id.json"
 
 [scripts]

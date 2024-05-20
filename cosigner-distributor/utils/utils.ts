@@ -92,6 +92,7 @@ export async function createKeypairFromBs58StringFile(key_str: string): Promise<
   const base58String = key_str;
   const decodedBytes = bs58.decode(base58String);
   const secretKeyUint8Array = new Uint8Array(decodedBytes);
+  console.log("secretKeyUint8Array is", secretKeyUint8Array);
   return Keypair.fromSecretKey(secretKeyUint8Array);
 }
 
