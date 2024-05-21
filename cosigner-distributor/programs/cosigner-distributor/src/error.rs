@@ -16,5 +16,12 @@ pub enum ErrorCode {
     TooEarlyToClaim,
     #[msg("Admin account not match distributor creator")]
     DistributorAdminMismatch,
+    #[msg("Amount over balance")]
+    AmountOverBalance,
+    #[msg("Withdraw amount need GT 0")]
+    WithdrawAmountNeedGT0,
+    #[msg("New receiver is same with old receiver")]
+    SameReceivers
+
 
 }
